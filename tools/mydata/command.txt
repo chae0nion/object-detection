@@ -1,0 +1,5 @@
+python demo.py \
+  --cfg_file cfgs/kitti_models/pointpillar.yaml \
+  --ckpt pointpillar_7728.pth \
+  --data_path {내경로} \
+  --save_to_file
