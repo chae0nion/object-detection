@@ -14,7 +14,7 @@ python demo.py \
   --ext .bin
 
 
-python demo.py \
+python demobase.py \
   --cfg_file cfgs/kitti_models/second.yaml \
   --ckpt second_7862.pth \
   --data_path mydata/4m \

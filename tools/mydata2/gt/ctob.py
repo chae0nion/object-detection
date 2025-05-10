@@ -3,7 +3,7 @@ import glob
 import os
 
 # CSV 파일들이 있는 폴더 경로
-csv_folder = 'your_csv_folder_path_here'  # 예: './gt_csvs/'
+csv_folder = 'csvs'  # 예: './gt_csvs/'
 output_path = 'gt_centers.csv'
 
 results = []
