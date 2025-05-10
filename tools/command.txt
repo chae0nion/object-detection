@@ -1,0 +1,27 @@
+python demo.py \
+  --cfg_file cfgs/kitti_models/pointpillar.yaml \
+  --ckpt pointpillar_7728.pth \
+  --data_path {내경로} \
+  --save_to_file
+  
+  
+
+
+python demo.py \
+  --cfg_file cfgs/kitti_models/pointpillar.yaml \
+  --ckpt pointpillar_7728.pth \
+  --data_path practice/pcd_bin_split \
+  --ext .bin
+
+
+python demo.py \
+  --cfg_file cfgs/kitti_models/second.yaml \
+  --ckpt second_7862.pth \
+  --data_path mydata/4m \
+  
+   python demo.py \
+  --cfg_file cfgs/kitti_models/second.yaml \
+  --data_path mydata \
+  --ckpt second_7862.pth \
+  --gt_csv gt_centers.csv \
+ 

@@ -35,7 +35,8 @@ def get_coor_colors(obj_labels):
     return label_rgba
 
 
-def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_labels=None, ref_scores=None, point_colors=None, draw_origin=True):
+def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_labels=None, ref_scores=None, point_colors=None,
+                draw_origin=True, save_to_file=False, output_path=None):
     if isinstance(points, torch.Tensor):
         points = points.cpu().numpy()
     if isinstance(gt_boxes, torch.Tensor):
@@ -44,7 +45,7 @@ def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_labels=None, ref_scor
         ref_boxes = ref_boxes.cpu().numpy()
 
     vis = open3d.visualization.Visualizer()
-    vis.create_window()
+    vis.create_window(visible=True)  # 저장용이면 창 안 띄움
 
     vis.get_render_option().point_size = 1.0
     vis.get_render_option().background_color = np.zeros(3)
@@ -57,20 +58,29 @@ def draw_scenes(points, gt_boxes=None, ref_boxes=None, ref_labels=None, ref_scor
     pts = open3d.geometry.PointCloud()
     pts.points = open3d.utility.Vector3dVector(points[:, :3])
 
-    vis.add_geometry(pts)
     if point_colors is None:
         pts.colors = open3d.utility.Vector3dVector(np.ones((points.shape[0], 3)))
     else:
         pts.colors = open3d.utility.Vector3dVector(point_colors)
+
+    vis.add_geometry(pts)
 
     if gt_boxes is not None:
         vis = draw_box(vis, gt_boxes, (0, 0, 1))
 
     if ref_boxes is not None:
         vis = draw_box(vis, ref_boxes, (0, 1, 0), ref_labels, ref_scores)
+        
+    
 
+    vis.poll_events()
+    vis.update_renderer()
+
+    if save_to_file and output_path is not None:
+        vis.capture_screen_image(output_path)
     vis.run()
     vis.destroy_window()
+
 
 
 def translate_boxes_to_open3d_instance(gt_boxes):
