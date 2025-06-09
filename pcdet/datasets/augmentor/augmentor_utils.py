@@ -13,7 +13,7 @@ def random_flip_along_x(gt_boxes, points, return_flip=False, enable=None):
     Returns:
     """
     if enable is None:
-        enable = np.random.choice([False, True], replace=False, p=[0.5, 0.5])
+        enable = np.random.choice([False, True], p=[0.5, 0.5])
     if enable:
         gt_boxes[:, 1] = -gt_boxes[:, 1]
         gt_boxes[:, 6] = -gt_boxes[:, 6]

@@ -25,32 +25,6 @@ from pcdet.utils import common_utils
 from pcdet.ops.iou3d_nms import iou3d_nms_utils
 
 
-def evaluate_prediction(pred_boxes_np, gt_boxes_np, iou_thresh=0.1):
-    # 이미 torch.Tensor라면 변환하지 않음
-    pred_boxes = pred_boxes_np if isinstance(pred_boxes_np, torch.Tensor) else torch.from_numpy(pred_boxes_np).cuda()
-    gt_boxes = gt_boxes_np if isinstance(gt_boxes_np, torch.Tensor) else torch.from_numpy(gt_boxes_np).cuda()
-
-    if pred_boxes.shape[0] == 0:
-        return {'TP': 0, 'FP': 0, 'FN': gt_boxes.shape[0],
-                'Precision': 0.0, 'Recall': 0.0, 'FPR': 0.0, 'Accuracy': 0.0}
-
-    ious = iou3d_nms_utils.boxes_iou3d_gpu(pred_boxes, gt_boxes)
-    max_ious, _ = ious.max(dim=1)
-
-    tp_mask = max_ious >= iou_thresh
-    TP = int(tp_mask.sum().item())
-    FP = int((~tp_mask).sum().item())
-    FN = max(0, gt_boxes.shape[0] - TP)
-
-    precision = TP / (TP + FP) if (TP + FP) > 0 else 0.0
-    recall = TP / (TP + FN) if (TP + FN) > 0 else 0.0
-    fpr = FP / (TP + FP) if (TP + FP) > 0 else 0.0
-    accuracy = TP / (TP + FP + FN) if (TP + FP + FN) > 0 else 0.0
-
-    return {'TP': TP, 'FP': FP, 'FN': FN,
-            'Precision': precision, 'Recall': recall, 'FPR': fpr, 'Accuracy': accuracy}
-
-
 class DemoDataset(DatasetTemplate):
     def __init__(self, dataset_cfg, class_names, training=True, root_path=None, logger=None, ext='.bin'):
         super().__init__(dataset_cfg=dataset_cfg, class_names=class_names, training=training,
@@ -94,17 +68,19 @@ def parse_config():
     parser.add_argument('--data_path', type=str, required=True, help='Point cloud file or directory')
     parser.add_argument('--ckpt', type=str, required=True, help='Pretrained model path')
     parser.add_argument('--gt_csv', type=str, required=True, help='Path to GT centers CSV file')
-    parser.add_argument('--ext', type=str, default='.bin', help='Point cloud file extension (.bin or .npy)')
+    parser.add_argument('--ext', type=str, default='.npy', help='Point cloud file extension (.bin or .npy)')
     return parser.parse_args()
 
-
-# ... (기존 import 및 정의 생략)
 
 def main():
     args = parse_config()
     logger = common_utils.create_logger()
     distances = ['4m', '7m', '10m']
     global cfg
+
+    Path("demo_output").mkdir(parents=True, exist_ok=True)
+
+    all_metrics = []  # CSV 저장용 리스트
 
     for folder in distances:
         print(f"\n=== Processing {folder} ===")
@@ -119,10 +95,9 @@ def main():
         model.cuda().eval()
 
         gt_df = pd.read_csv(args.gt_csv)
-        gt_row = gt_df[gt_df['file'].str.contains(folder)].iloc[0]
-        gt_boxes = np.array([[gt_row['x'], gt_row['y'], gt_row['z'], 1.8, 2.0, 1.6, 0.0]], dtype=np.float32)
-
-        all_metrics = []
+        gt_row = gt_df[gt_df['filename'].str.contains(folder)].iloc[0]
+        gt_boxes = np.array([[gt_row['center_x'], gt_row['center_y'], gt_row['center_z'], 2.0, 4.0, 1.5, 0.0]],
+                            dtype=np.float32)
 
         with torch.no_grad():
             for idx, data_dict in enumerate(demo_dataset):
@@ -140,8 +115,7 @@ def main():
 
                 np.save(output_dir / f"pred_{idx:06d}.npy", pred_dicts[0])
                 image_path = output_dir / f"{idx:06d}.png"
-                
-                
+
                 V.draw_scenes(
                     points=data_dict['points'][:, 1:],
                     ref_boxes=pred_dicts[0]['pred_boxes'],
@@ -152,40 +126,27 @@ def main():
                     output_path=str(image_path)
                 )
 
-                # 저장
-                frame_rows = []
+                # 결과 저장용 row 생성
+                # 결과 저장용 row 생성
                 for i, box in enumerate(pred_boxes):
-                    row = {
-                        'frame': idx,
-                        'material': material,
-                        'distance': folder,
-                        'box_id': i,
-                        'x': box[0], 'y': box[1], 'z': box[2],
-                        'dx': box[3], 'dy': box[4], 'dz': box[5],
-                        'heading': box[6],
-                        'score': pred_scores[i],
-                        'label': pred_labels[i]
-                    }
-                    frame_rows.append(row)
+                    if pred_scores[i] >= 0.5:  # 신뢰도 필터링
+                        row = {
+                            'frame': idx,
+                            'material': material,
+                            'distance': folder,
+                            'box_id': i,
+                            'x': box[0], 'y': box[1], 'z': box[2],
+                            'dx': box[3], 'dy': box[4], 'dz': box[5],
+                            'heading': box[6],
+                            'score': float(pred_scores[i]),
+                            'label': int(pred_labels[i])
+                        }
+                        all_metrics.append(row)
 
-                    frame_df = pd.DataFrame(frame_rows)
-                    frame_df.to_csv(output_dir / f"pred_detail_{idx:06d}.csv", index=False)
-
-                metrics = evaluate_prediction(pred_dicts[0]['pred_boxes'], gt_boxes)
-                metrics.update({'frame': idx, 'material': material, 'distance': folder})
-                all_metrics.append(metrics)
-
-        # 저장
-        df = pd.DataFrame(all_metrics)
-        df.to_csv(Path("demo_output") / folder / "evaluation_summary.csv", index=False)
-
-    # 최종 전체 거리-재질 요약
-    all_df = pd.concat([
-        pd.read_csv(f"demo_output/{d}/evaluation_summary.csv") for d in distances
-    ])
-    summary = all_df.groupby(['distance', 'material']).mean(numeric_only=True).reset_index()
-    summary.to_csv(Path("demo_output") / "summary_by_distance_material.csv", index=False)
-    logger.info("All demo runs complete.")
+    # CSV로 결과 저장
+    summary_df = pd.DataFrame(all_metrics)
+    summary_df.to_csv("demo_output/material_detection_summary.csv", index=False)
+    print("✅ 결과 CSV 저장 완료 → demo_output/material_detection_summary.csv")
 
 
 if __name__ == '__main__':

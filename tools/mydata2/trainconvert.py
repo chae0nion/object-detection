@@ -5,7 +5,6 @@ import pandas as pd
 def read_pcd_ascii_with_real_intensity(pcd_path, z_shift=1.1):
     with open(pcd_path, 'r') as f:
         lines = f.readlines()
-
     start_idx = next(i for i, line in enumerate(lines) if line.strip().upper() == "DATA ASCII") + 1
     points = []
     for line in lines[start_idx:]:
@@ -13,8 +12,6 @@ def read_pcd_ascii_with_real_intensity(pcd_path, z_shift=1.1):
         if len(parts) < 4:
             continue
         x, y, z, intensity = map(float, parts[:4])
-        x = y
-        y = -x
         z += z_shift
         intensity /= 255.0
         points.append([x, y, z, intensity])
@@ -22,14 +19,14 @@ def read_pcd_ascii_with_real_intensity(pcd_path, z_shift=1.1):
 
 # 경로 설정
 input_root = "baseline"
-output_root = "./output_dataset"
+output_root = "./output_dataset_npy"
 
-velodyne_dir = os.path.join(output_root, "velodyne")
+velodyne_dir = os.path.join(output_root, "velodyne")  # npy 저장 디렉토리
 label_dir = os.path.join(output_root, "labels")
 os.makedirs(velodyne_dir, exist_ok=True)
 os.makedirs(label_dir, exist_ok=True)
 
-# GT 좌표 딕셔너리로 로딩
+# GT 좌표 로딩
 gt_df = pd.read_csv("baseline/gt_centers.csv")
 gt_dict = {}
 for _, row in gt_df.iterrows():
@@ -40,6 +37,7 @@ for _, row in gt_df.iterrows():
     elif "10m" in row["filename"]:
         gt_dict["10m"] = (row["center_x"], row["center_y"], row["center_z"])
 
+# 변환 루프
 distances = ["4m", "7m", "10m"]
 index = 0
 for distance in distances:
@@ -49,18 +47,17 @@ for distance in distances:
             continue
 
         pcd_path = os.path.join(dist_folder, fname)
-        bin_name = f"{index:06d}.bin"
+        npy_name = f"{index:06d}.npy"
         label_name = f"{index:06d}.txt"
 
         try:
             points = read_pcd_ascii_with_real_intensity(pcd_path)
-            points.tofile(os.path.join(velodyne_dir, bin_name))
+            np.save(os.path.join(velodyne_dir, npy_name), points)
 
             if distance in gt_dict:
                 x, y, z = gt_dict[distance]
-                dx, dz, dy, yaw = 2.0, 1.5, 4.0, 0.0
+                dx, dy, dz, yaw = 2.0, 4.0, 1.5, 0.0
                 label_line = f"{x:.2f} {y:.2f} {z:.2f} {dx:.2f} {dy:.2f} {dz:.2f} {yaw:.2f} Vehicle"
-
                 with open(os.path.join(label_dir, label_name), 'w') as f:
                     f.write(label_line)
 
@@ -73,14 +70,12 @@ for distance in distances:
 
 print(f"\n✅ 총 {index}개 변환 완료! → {velodyne_dir}, {label_dir}")
 
-import os
 import random
 
-input_dir = "./output_dataset/velodyne"
-imageset_dir = "./output_dataset/ImageSets"
+input_dir = "./output_dataset_npy/velodyne"
+imageset_dir = "./output_dataset_npy/ImageSets"
 os.makedirs(imageset_dir, exist_ok=True)
 
-# 거리별 인덱스 범위 지정
 dist_ranges = {
     "4m": range(0, 100),
     "7m": range(100, 200),
@@ -97,12 +92,12 @@ for dist, indices in dist_ranges.items():
     train_ids.extend(ids[:80])
     val_ids.extend(ids[80:])
 
-# 저장
 with open(os.path.join(imageset_dir, 'train.txt'), 'w') as f:
     f.write('\n'.join(sorted(train_ids)))
 with open(os.path.join(imageset_dir, 'val.txt'), 'w') as f:
     f.write('\n'.join(sorted(val_ids)))
 
 print(f"✅ 거리별 균등 분할 완료: train={len(train_ids)}, val={len(val_ids)}")
+
 
 
